@@ -1,9 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="20" height="20" tilewidth="70" tileheight="70" infinite="0" nextlayerid="5" nextobjectid="5">
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="20" height="20" tilewidth="70" tileheight="70" infinite="0" nextlayerid="7" nextobjectid="5">
  <tileset firstgid="1" source="123.tsx"/>
+ <tileset firstgid="157" source="1234.tsx"/>
  <layer id="1" name="Слой тайлов 1" width="20" height="20">
   <data encoding="base64" compression="zlib">
    eJxjYBgFo2AUjIKhBbjwYFLUjALKAADMOACN
+  </data>
+ </layer>
+ <layer id="5" name="coins" width="20" height="20">
+  <data encoding="base64" compression="zlib">
+   eJxjYBgFo2AUUAOcxINHzaO/eaOA9gAAunobfA==
+  </data>
+ </layer>
+ <layer id="6" name="EndFlag" width="20" height="20">
+  <data encoding="base64" compression="zlib">
+   eJxjYBgFo2AUjIKBATsG2gGjgCIAAEhPALk=
   </data>
  </layer>
  <layer id="4" name="Platforms" width="20" height="20" visible="0">
