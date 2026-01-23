@@ -1,5 +1,6 @@
 import arcade
 import os
+import time
 from level import Level
 
 class Player(arcade.Sprite):
@@ -8,11 +9,55 @@ class Player(arcade.Sprite):
         super().__init__(path, scale=1.0)
         self.speed_x = 5
 
+class DeathScreen:
+    def __init__(self, game_view, time_elapsed, coins_collected):
+        self.game_view = game_view
+        self.time_elapsed = time_elapsed
+        self.coins_collected = coins_collected
+        self.hovered = None
+
+    def draw(self):
+        w, h = self.game_view.window.width, self.game_view.window.height
+        arcade.draw_lrbt_rectangle_filled(0, w, 0, h, (0, 0, 0, 200))
+        arcade.draw_text("СМЕРТЬ", w // 2, h - 150, arcade.color.RED, 48, anchor_x="center")
+        arcade.draw_text(f"Время: {self.time_elapsed:.1f} сек", w // 2, h - 220, arcade.color.WHITE, 24, anchor_x="center")
+        arcade.draw_text(f"Монеты: {self.coins_collected}", w // 2, h - 260, arcade.color.YELLOW, 24, anchor_x="center")
+        arcade.draw_text("🔄 Возродиться", w // 2, h - 350, arcade.color.WHITE, 24, anchor_x="center")
+
+    def on_mouse_press(self, x, y):
+        w, h = self.game_view.window.width, self.game_view.window.height
+        if abs(x - w // 2) < 150 and abs(y - (h - 350)) < 20:
+            self.game_view.restart_level()
+
+class WinScreen:
+    def __init__(self, game_view, time_elapsed, coins_collected):
+        self.game_view = game_view
+        self.time_elapsed = time_elapsed
+        self.coins_collected = coins_collected
+        self.hovered = None
+
+    def draw(self):
+        w, h = self.game_view.window.width, self.game_view.window.height
+        arcade.draw_lrbt_rectangle_filled(0, w, 0, h, (0, 100, 0, 200))
+        arcade.draw_text("ПОБЕДА!", w // 2, h - 150, arcade.color.GREEN, 48, anchor_x="center")
+        arcade.draw_text(f"Время: {self.time_elapsed:.1f} сек", w // 2, h - 220, arcade.color.WHITE, 24, anchor_x="center")
+        arcade.draw_text(f"Монеты: +{self.coins_collected}", w // 2, h - 260, arcade.color.YELLOW, 24, anchor_x="center")
+        arcade.draw_text("▶ Продолжить", w // 2, h - 350, arcade.color.WHITE, 24, anchor_x="center")
+
+    def on_mouse_press(self, x, y):
+        w, h = self.game_view.window.width, self.game_view.window.height
+        if abs(x - w // 2) < 150 and abs(y - (h - 350)) < 20:
+            from main_menu import Menu
+            menu = Menu()
+            self.game_view.window.show_view(menu)
+
 class SettingsMenu:
     def __init__(self, parent_view):
         self.parent_view = parent_view
         self.hovered = None
         self.options = [(800, 600), (1024, 768), (1280, 720), (1920, 1080)]
+        from database import get_player_data
+        self.death_enabled = get_player_data()["death_screen_enabled"]
 
     def draw(self):
         w, h = self.parent_view.window.width, self.parent_view.window.height
@@ -26,31 +71,39 @@ class SettingsMenu:
             arcade.draw_text(text, w // 2, y, color, 24, anchor_x="center")
             y -= 50
 
-        # Кнопка Назад
+        status = "Вкл" if self.death_enabled else "Выкл"
+        arcade.draw_text(f"Экран смерти: {status}", w // 2, y - 20, arcade.color.WHITE, 24, anchor_x="center")
         arcade.draw_text("← Назад", w // 2, 50, arcade.color.WHITE, 24, anchor_x="center")
-
-        arcade.draw_text(f"Текущее: {w}x{h}", w // 2, 100, arcade.color.YELLOW, 20, anchor_x="center")
 
     def on_mouse_motion(self, x, y):
         self.hovered = None
         w, h = self.parent_view.window.width, self.parent_view.window.height
+        idx = 0
         for i in range(len(self.options)):
             btn_y = h - 250 - i * 50
             if abs(x - w // 2) < 150 and abs(y - btn_y) < 20:
-                self.hovered = i
-                break
-        # Проверка для кнопки "Назад"
+                self.hovered = ("res", i)
+                return
+        btn_y = h - 250 - len(self.options) * 50 - 20
+        if abs(x - w // 2) < 200 and abs(y - btn_y) < 20:
+            self.hovered = ("death", None)
         if abs(x - w // 2) < 100 and abs(y - 50) < 20:
-            self.hovered = "back"
+            self.hovered = ("back", None)
 
     def on_mouse_press(self, x, y):
         w, h = self.parent_view.window.width, self.parent_view.window.height
-        if self.hovered == "back":
-            self.parent_view.pause_menu.in_settings = False
-        elif isinstance(self.hovered, int) and self.hovered is not None:
-            w, h = self.options[self.hovered]
-            self.parent_view.window.set_size(w, h)
-            self.parent_view.window.center_window()
+        if self.hovered:
+            kind, val = self.hovered
+            if kind == "back":
+                self.parent_view.pause_menu.in_settings = False
+            elif kind == "res":
+                res = self.options[val]
+                self.parent_view.window.set_size(*res)
+                self.parent_view.window.center_window()
+            elif kind == "death":
+                self.death_enabled = not self.death_enabled
+                from database import set_death_screen
+                set_death_screen(self.death_enabled)
 
 class PauseMenu:
     def __init__(self, game_view):
@@ -112,13 +165,20 @@ class PauseMenu:
 class GameView(arcade.View):
     def __init__(self, level_path, skin):
         super().__init__()
-        self.level = Level(level_path)
-        self.player_sprite = Player(skin)
-        # Начальная позиция: по центру экрана
+        self.level_path = level_path
+        self.skin = skin
+        self.start_time = time.time()
+        self.setup()
+
+        # Включаем отслеживание мыши
+        self.window.set_mouse_visible(True)
+
+    def setup(self):
+        self.level = Level(self.level_path)
+        self.player_sprite = Player(self.skin)
         self.player_sprite.center_x = self.window.width // 2
         self.player_sprite.center_y = self.window.height // 2
 
-        # Используем PhysicsEnginePlatformer для прыжков
         self.physics_engine = arcade.PhysicsEnginePlatformer(
             self.player_sprite,
             platforms=self.level.platforms,
@@ -128,22 +188,61 @@ class GameView(arcade.View):
         self.player_list = arcade.SpriteList()
         self.player_list.append(self.player_sprite)
 
+        self.collected_coins = 0
         self.paused = False
         self.pause_menu = PauseMenu(self)
+        self.death_screen = None
+        self.win_screen = None
+
+    def restart_level(self):
+        self.setup()
 
     def on_draw(self):
         self.clear()
         self.level.draw()
         self.player_list.draw()
+        arcade.draw_text(f"Монеты: {self.collected_coins}", 20, self.window.height - 40, arcade.color.YELLOW, 24)
 
         if self.paused:
             self.pause_menu.draw()
+        if self.death_screen:
+            self.death_screen.draw()
+        if self.win_screen:
+            self.win_screen.draw()
 
     def on_update(self, delta_time):
+        if self.death_screen or self.win_screen:
+            return
+
         if not self.paused:
             self.physics_engine.update()
 
+            coin_hit_list = arcade.check_for_collision_with_list(self.player_sprite, self.level.coins)
+            for coin in coin_hit_list:
+                coin.remove_from_sprite_lists()
+                self.collected_coins += 1
+
+            flag_hit = arcade.check_for_collision_with_list(self.player_sprite, self.level.end_flag)
+            if flag_hit:
+                from database import add_coins
+                add_coins(self.collected_coins)
+                elapsed = time.time() - self.start_time
+                self.win_screen = WinScreen(self, elapsed, self.collected_coins)
+                return
+
+            if self.player_sprite.center_y < -100:
+                from database import get_player_data
+                data = get_player_data()
+                if data["death_screen_enabled"]:
+                    elapsed = time.time() - self.start_time
+                    self.death_screen = DeathScreen(self, elapsed, self.collected_coins)
+                else:
+                    self.restart_level()
+
     def on_key_press(self, key, modifiers):
+        if self.death_screen or self.win_screen:
+            return
+
         if key == arcade.key.ESCAPE:
             self.paused = not self.paused
             return
@@ -166,7 +265,15 @@ class GameView(arcade.View):
     def on_mouse_motion(self, x, y, dx, dy):
         if self.paused:
             self.pause_menu.on_mouse_motion(x, y)
+        elif self.death_screen:
+            self.death_screen.on_mouse_motion(x, y)
+        elif self.win_screen:
+            self.win_screen.on_mouse_motion(x, y)
 
     def on_mouse_press(self, x, y, button, modifiers):
         if self.paused:
             self.pause_menu.on_mouse_press(x, y)
+        elif self.death_screen:
+            self.death_screen.on_mouse_press(x, y)
+        elif self.win_screen:
+            self.win_screen.on_mouse_press(x, y)
